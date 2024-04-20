@@ -1,0 +1,21 @@
+{
+  "name": "typeorm-multitenancy-nestjs",
+  "version": "0.1.1",
+  "description": "Integration of typeorm-multitenancy for NestJS",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Arseny Buravlev <arseny.buravlyov@gmail.com>",
+  "repository": "https://github.com/arseny034/typeorm-multitenancy",
+  "license": "MIT",
+  "peerDependencies": {
+    "@nestjs/common": "^10.0.0",
+    "@nestjs/typeorm": "^10.0.0",
+    "typeorm": "^0.3.0",
+    "typeorm-multitenancy": "^0.1.0"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "^10.3.8"
+  }
+}
