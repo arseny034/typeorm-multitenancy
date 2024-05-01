@@ -1,4 +1,5 @@
 import {
+  DataSource,
   DeepPartial,
   EntityTarget,
   FindManyOptions,
@@ -21,30 +22,28 @@ import { DeleteResult } from 'typeorm/query-builder/result/DeleteResult';
 import { InsertResult } from 'typeorm/query-builder/result/InsertResult';
 import { UpsertOptions } from 'typeorm/repository/UpsertOptions';
 
-import { _MultitenantDataSource } from './multitenant-datasource';
-
 export class MultitenantRepository<Entity extends ObjectLiteral>
   implements Repository<Entity>
 {
   constructor(
     readonly target: EntityTarget<Entity>,
-    protected readonly dataSource: _MultitenantDataSource,
+    protected readonly _dataSource: DataSource,
     readonly queryRunner?: QueryRunner,
   ) {}
 
   get manager(): EntityManager {
-    return this.dataSource.manager;
+    return this._dataSource.manager;
   }
 
   get metadata(): EntityMetadata {
-    return this.dataSource.getMetadata(this.target);
+    return this._dataSource.getMetadata(this.target);
   }
 
   createQueryBuilder(
     alias?: string,
     queryRunner?: QueryRunner,
   ): SelectQueryBuilder<Entity> {
-    return this.dataSource.manager.createQueryBuilder<Entity>(
+    return this._dataSource.manager.createQueryBuilder<Entity>(
       this.metadata.target,
       alias ?? this.metadata.targetName,
       queryRunner ?? this.queryRunner,

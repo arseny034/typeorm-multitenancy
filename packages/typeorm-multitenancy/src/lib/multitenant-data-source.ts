@@ -2,6 +2,7 @@ import {
   DataSource,
   DataSourceOptions,
   EntityManager,
+  EntityMetadataNotFoundError,
   EntityTarget,
   Migration,
   ObjectLiteral,
@@ -26,32 +27,52 @@ import { Repository } from 'typeorm/repository/Repository';
 import { TreeRepository } from 'typeorm/repository/TreeRepository';
 import { EntitySubscriberInterface } from 'typeorm/subscriber/EntitySubscriberInterface';
 
+import { TenantConnectionNotFound, TenantIdNotProvided } from './errors';
 import { MultitenantRepository } from './multitenant-repository';
-import { MultitenantDataSource, MultitenantDataSourceOptions } from './types';
+import { createNoopEntityManager } from './noop-entity-manager';
+import {
+  MultitenantDataSourceConstructor,
+  MultitenantDataSourceOptions,
+  SpecificDataSourceOptions,
+} from './types';
 
-export class _MultitenantDataSource {
-  protected readonly defaultDataSourceId: string;
-  protected readonly dataSources = new Map<string, DataSource>();
+export class _MultitenantDataSource<T extends DataSourceOptions['type']> {
+  protected readonly tenantDataSources = new Map<string, DataSource>();
   protected readonly repositories = new Map<
     EntityTarget<any>,
     MultitenantRepository<any>
   >();
+  protected readonly getTenantId: MultitenantDataSourceOptions<T>['getTenantId'];
+  protected readonly getTenantDataSourceConfig:
+    | MultitenantDataSourceOptions<T>['getTenantDataSourceConfig']
+    | undefined;
+  protected readonly dataSourceFactory:
+    | MultitenantDataSourceOptions<T>['dataSourceFactory']
+    | undefined;
+
+  protected _entityMetadatas: EntityMetadata[] = [];
+  protected _entityMetadatasMap = new Map<EntityTarget<any>, EntityMetadata>();
 
   readonly '@instanceof' = Symbol.for('DataSource');
   readonly name = _MultitenantDataSource.name;
+  readonly options: SpecificDataSourceOptions<T>;
 
-  constructor(
-    readonly options: MultitenantDataSourceOptions,
-    protected readonly dataSourceCtor: typeof DataSource = DataSource,
-  ) {
-    this.defaultDataSourceId =
-      options.type === 'postgres' ? options.schema ?? 'public' : 'default';
-    const defaultDataSource = new this.dataSourceCtor(this.options);
-    this.dataSources.set(this.defaultDataSourceId, defaultDataSource);
+  constructor(options: MultitenantDataSourceOptions<T>) {
+    const {
+      getTenantId,
+      getTenantDataSourceConfig,
+      dataSourceFactory,
+      ...sharedOptions
+    } = options;
+
+    this.getTenantId = getTenantId;
+    this.getTenantDataSourceConfig = getTenantDataSourceConfig;
+    this.dataSourceFactory = dataSourceFactory;
+    this.options = sharedOptions;
   }
 
   get isInitialized(): boolean {
-    return this.getDataSource().isInitialized;
+    return [...this.tenantDataSources.values()].every((ds) => ds.isInitialized);
   }
 
   get driver(): Driver {
@@ -59,7 +80,7 @@ export class _MultitenantDataSource {
   }
 
   get manager(): EntityManager {
-    return this.getDataSource().manager;
+    return this.tryGetDataSource()?.manager ?? createNoopEntityManager();
   }
 
   get namingStrategy(): NamingStrategyInterface {
@@ -83,11 +104,11 @@ export class _MultitenantDataSource {
   }
 
   get entityMetadatas(): EntityMetadata[] {
-    return this.getDataSource().entityMetadatas;
+    return this._entityMetadatas;
   }
 
   get entityMetadatasMap(): Map<EntityTarget<any>, EntityMetadata> {
-    return this.getDataSource().entityMetadatasMap;
+    return this._entityMetadatasMap;
   }
 
   get queryResultCache(): QueryResultCache | undefined {
@@ -119,7 +140,7 @@ export class _MultitenantDataSource {
   }
 
   set namingStrategy(namingStrategy) {
-    for (const [, dataSource] of this.dataSources) {
+    for (const [, dataSource] of this.tenantDataSources) {
       dataSource.namingStrategy = namingStrategy;
     }
   }
@@ -135,7 +156,7 @@ export class _MultitenantDataSource {
   setOptions(options: DataSourceOptions): this {
     (this as any).options = options;
 
-    for (const [, dataSource] of this.dataSources) {
+    for (const [, dataSource] of this.tenantDataSources) {
       dataSource.setOptions(options);
     }
 
@@ -143,9 +164,20 @@ export class _MultitenantDataSource {
   }
 
   async initialize(): Promise<this> {
-    await Promise.all(
-      [...this.dataSources.values()].map((ds) => ds.initialize()),
+    const [tenantDataSource] = await Promise.all(
+      [...this.tenantDataSources.values()].map((ds) => ds.initialize()),
     );
+
+    if (tenantDataSource) {
+      this._entityMetadatas = tenantDataSource.entityMetadatas;
+      this._entityMetadatasMap = tenantDataSource.entityMetadatasMap;
+    } else {
+      const temporaryDataSource = new DataSource(this.options);
+      await (temporaryDataSource as any).buildMetadatas();
+
+      this._entityMetadatas = temporaryDataSource.entityMetadatas;
+      this._entityMetadatasMap = temporaryDataSource.entityMetadatasMap;
+    }
 
     return this;
   }
@@ -157,7 +189,9 @@ export class _MultitenantDataSource {
   }
 
   async destroy(): Promise<void> {
-    await Promise.all([...this.dataSources.values()].map((ds) => ds.destroy()));
+    await Promise.all(
+      [...this.tenantDataSources.values()].map((ds) => ds.destroy()),
+    );
   }
 
   async close(): Promise<void> {
@@ -166,7 +200,7 @@ export class _MultitenantDataSource {
 
   async synchronize(dropBeforeSync?: boolean): Promise<void> {
     await Promise.all(
-      [...this.dataSources.values()].map((ds) =>
+      [...this.tenantDataSources.values()].map((ds) =>
         ds.synchronize(dropBeforeSync),
       ),
     );
@@ -174,7 +208,7 @@ export class _MultitenantDataSource {
 
   async dropDatabase(): Promise<void> {
     await Promise.all(
-      [...this.dataSources.values()].map((ds) => ds.dropDatabase()),
+      [...this.tenantDataSources.values()].map((ds) => ds.dropDatabase()),
     );
   }
 
@@ -183,7 +217,9 @@ export class _MultitenantDataSource {
     fake?: boolean;
   }): Promise<Migration[]> {
     const migrations = await Promise.all(
-      [...this.dataSources.values()].map((ds) => ds.runMigrations(options)),
+      [...this.tenantDataSources.values()].map((ds) =>
+        ds.runMigrations(options),
+      ),
     );
 
     return migrations[0];
@@ -194,13 +230,15 @@ export class _MultitenantDataSource {
     fake?: boolean;
   }): Promise<void> {
     await Promise.all(
-      [...this.dataSources.values()].map((ds) => ds.undoLastMigration(options)),
+      [...this.tenantDataSources.values()].map((ds) =>
+        ds.undoLastMigration(options),
+      ),
     );
   }
 
   async showMigrations(): Promise<boolean> {
     const results = await Promise.all(
-      [...this.dataSources.values()].map((ds) => ds.showMigrations()),
+      [...this.tenantDataSources.values()].map((ds) => ds.showMigrations()),
     );
 
     return results.every(Boolean);
@@ -211,7 +249,13 @@ export class _MultitenantDataSource {
   }
 
   getMetadata(target: EntityTarget<any>): EntityMetadata {
-    return this.getDataSource().getMetadata(target);
+    const metadata = this._entityMetadatasMap.get(target);
+
+    if (!metadata) {
+      throw new EntityMetadataNotFoundError(target);
+    }
+
+    return metadata;
   }
 
   getRepository<Entity extends ObjectLiteral>(
@@ -223,7 +267,10 @@ export class _MultitenantDataSource {
       return foundRepository;
     }
 
-    const newRepository = new MultitenantRepository<any>(target, this);
+    const newRepository = new MultitenantRepository<any>(
+      target,
+      this as unknown as DataSource,
+    );
     this.repositories.set(target, newRepository);
     return newRepository;
   }
@@ -311,12 +358,25 @@ export class _MultitenantDataSource {
     return this.getDataSource().defaultReplicationModeForReads();
   }
 
-  getDefaultTenantId(): string {
-    return this.defaultDataSourceId;
+  async getTenants(): Promise<string[]> {
+    return [...this.tenantDataSources.keys()];
   }
 
-  getTenantIds(): string[] {
-    return [...this.dataSources.keys()];
+  async setTenants(tenantIds: string[]) {
+    const existingTenants = new Set(this.tenantDataSources.keys());
+    const desiredTenants = new Set(tenantIds);
+
+    const tenantsToAdd = [...desiredTenants.values()].filter(
+      (tenantId) => !existingTenants.has(tenantId),
+    );
+    const tenantsToRemove = [...existingTenants.values()].filter(
+      (tenantId) => !desiredTenants.has(tenantId),
+    );
+
+    await Promise.all([
+      this.addTenants(tenantsToAdd),
+      this.removeTenants(tenantsToRemove),
+    ]);
   }
 
   async addTenant(tenantId: string) {
@@ -325,7 +385,7 @@ export class _MultitenantDataSource {
 
   async addTenants(tenantIds: string[]) {
     const existingTenants = tenantIds.filter((tenantId) =>
-      this.dataSources.has(tenantId),
+      this.tenantDataSources.has(tenantId),
     );
 
     if (existingTenants.length > 0) {
@@ -333,14 +393,17 @@ export class _MultitenantDataSource {
     }
 
     await Promise.all(
-      tenantIds.map((tenantId) =>
-        new this.dataSourceCtor({
-          ...this.options,
-          ...(this.options.type === 'postgres' ? { schema: tenantId } : {}),
-        })
-          .initialize()
-          .then((ds) => this.dataSources.set(tenantId, ds)),
-      ),
+      tenantIds.map(async (tenantId) => {
+        const options = this.getTenantDataSourceConfig
+          ? this.getTenantDataSourceConfig(tenantId, this.options)
+          : this.options;
+
+        const dataSource = this.dataSourceFactory
+          ? await this.dataSourceFactory(options)
+          : await new DataSource(options).initialize();
+
+        this.tenantDataSources.set(tenantId, dataSource);
+      }),
     );
   }
 
@@ -351,62 +414,42 @@ export class _MultitenantDataSource {
   async removeTenants(tenantIds: string[]) {
     await Promise.all(
       tenantIds.map(async (tenantId) => {
-        const tenantDataSource = this.dataSources.get(tenantId);
+        const tenantDataSource = this.tenantDataSources.get(tenantId);
 
         if (tenantDataSource) {
           await tenantDataSource.destroy();
-          this.dataSources.delete(tenantId);
+          this.tenantDataSources.delete(tenantId);
         }
       }),
     );
   }
 
   protected getDataSource() {
-    if (this.options.type !== 'postgres') {
-      const defaultDataSource = this.dataSources.get(this.defaultDataSourceId);
-      if (!defaultDataSource) {
-        throw new Error('Default data source not found');
-      }
-      return defaultDataSource;
+    const tenantId = this.getTenantId();
+
+    if (!tenantId) {
+      throw new TenantIdNotProvided();
     }
 
-    const tenantId = this.options.getTenantId();
-    if (!tenantId || tenantId === this.options.schema) {
-      const defaultDataSource = this.dataSources.get(this.defaultDataSourceId);
-      if (!defaultDataSource) {
-        throw new Error('Default data source not found');
-      }
-      return defaultDataSource;
+    const tenantDataSource = this.tenantDataSources.get(tenantId);
+
+    if (!tenantDataSource) {
+      throw new TenantConnectionNotFound(tenantId);
     }
 
-    const dataSource = this.dataSources.get(tenantId);
-    if (!dataSource) {
-      throw new Error(`Tenant ${tenantId} not found`);
+    return tenantDataSource;
+  }
+
+  protected tryGetDataSource() {
+    const tenantId = this.getTenantId();
+
+    if (!tenantId) {
+      return null;
     }
 
-    return dataSource;
+    return this.tenantDataSources.get(tenantId) ?? null;
   }
 }
 
-export function createMultitenantDataSource(
-  options?: MultitenantDataSourceOptions,
-): MultitenantDataSource;
-export function createMultitenantDataSource(
-  dataSourceCtor: typeof DataSource,
-  options?: MultitenantDataSourceOptions,
-): MultitenantDataSource;
-export function createMultitenantDataSource(
-  optionsOrCtor?: typeof DataSource | MultitenantDataSourceOptions,
-  options?: MultitenantDataSourceOptions,
-): MultitenantDataSource {
-  if (options) {
-    return new _MultitenantDataSource(
-      options,
-      optionsOrCtor as typeof DataSource,
-    ) as unknown as MultitenantDataSource;
-  }
-
-  return new _MultitenantDataSource(
-    optionsOrCtor as MultitenantDataSourceOptions,
-  ) as unknown as MultitenantDataSource;
-}
+export const MultitenantDataSource =
+  _MultitenantDataSource as unknown as MultitenantDataSourceConstructor;

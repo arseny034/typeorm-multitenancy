@@ -1,5 +1,7 @@
-export { createMultitenantDataSource } from './lib/multitenant-datasource';
+export { MultitenantDataSource } from './lib/multitenant-data-source';
 export {
-  MultitenantDataSource,
   MultitenantDataSourceOptions,
+  MultitenantDataSourceConstructor,
+  MultitenantDataSourceInstance,
 } from './lib/types';
+export * from './lib/errors';

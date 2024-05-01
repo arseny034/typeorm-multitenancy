@@ -68,6 +68,7 @@ module.exports = {
     'unicorn/prevent-abbreviations': ERROR,
     'unicorn/prefer-module': OFF,
     'import/no-cycle': OFF,
+    'import/no-unresolved': OFF,
     'node/no-unsupported-features/es-syntax': OFF,
     'sonarjs/no-duplicate-string': OFF,
     'unicorn/prefer-ternary': OFF,
