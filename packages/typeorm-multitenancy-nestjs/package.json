@@ -14,7 +14,9 @@
   ],
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
-    "typecheck": "tsc --project tsconfig.build.json --noEmit"
+    "typecheck": "tsc --project tsconfig.build.json --noEmit",
+    "pretest": "rm -rf .sqlite && mkdir .sqlite",
+    "test": "vitest"
   },
   "peerDependencies": {
     "@nestjs/common": "^10.0.0",

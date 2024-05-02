@@ -12,6 +12,9 @@
     "dist",
     "package.json"
   ],
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
     "typecheck": "tsc --project tsconfig.build.json --noEmit",

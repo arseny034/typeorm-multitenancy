@@ -6,7 +6,7 @@ export type SpecificDataSourceOptions<T extends DataSourceOptions['type']> =
 export type MultitenantDataSourceOptions<T extends DataSourceOptions['type']> =
   DataSourceOptions & {
     type: T;
-    getTenantId: () => string;
+    getTenantId: () => string | undefined;
     getTenantDataSourceConfig?: (
       tenantId: string,
       sharedOptions: SpecificDataSourceOptions<T>,

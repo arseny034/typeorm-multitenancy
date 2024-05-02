@@ -2,7 +2,7 @@ import { Injectable, NestMiddleware } from '@nestjs/common';
 import { AsyncLocalStorage } from 'node:async_hooks';
 
 export interface TenantIdGetter {
-  (request: any): string | null;
+  (request: any): string | undefined;
 }
 
 export interface MultitenancyMiddlewareConstructor<
@@ -35,7 +35,7 @@ export class MultitenancyMiddleware implements NestMiddleware {
   ): MultitenancyMiddlewareConstructor<C> {
     return this.create(
       (request: { headers: Record<string, string | undefined> }) =>
-        request.headers[header] ?? null,
+        request.headers[header],
     );
   }
 
@@ -43,7 +43,7 @@ export class MultitenancyMiddleware implements NestMiddleware {
     return MultitenancyMiddleware.tenantIdStorage.getStore();
   }
 
-  protected getter!: TenantIdGetter;
+  protected getter: TenantIdGetter;
 
   use(request: unknown, _: unknown, next: (error?: unknown) => void) {
     const tenantId = this.getter(request);

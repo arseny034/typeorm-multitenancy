@@ -29,7 +29,6 @@ import { EntitySubscriberInterface } from 'typeorm/subscriber/EntitySubscriberIn
 
 import { TenantConnectionNotFound, TenantIdNotProvided } from './errors';
 import { MultitenantRepository } from './multitenant-repository';
-import { createNoopEntityManager } from './noop-entity-manager';
 import {
   MultitenantDataSourceConstructor,
   MultitenantDataSourceOptions,
@@ -50,8 +49,9 @@ export class _MultitenantDataSource<T extends DataSourceOptions['type']> {
     | MultitenantDataSourceOptions<T>['dataSourceFactory']
     | undefined;
 
-  protected _entityMetadatas: EntityMetadata[] = [];
-  protected _entityMetadatasMap = new Map<EntityTarget<any>, EntityMetadata>();
+  private _entityMetadatas: EntityMetadata[] = [];
+  private _entityMetadatasMap = new Map<EntityTarget<any>, EntityMetadata>();
+  private _defaultEntityManager: EntityManager;
 
   readonly '@instanceof' = Symbol.for('DataSource');
   readonly name = _MultitenantDataSource.name;
@@ -69,6 +69,10 @@ export class _MultitenantDataSource<T extends DataSourceOptions['type']> {
     this.getTenantDataSourceConfig = getTenantDataSourceConfig;
     this.dataSourceFactory = dataSourceFactory;
     this.options = sharedOptions;
+
+    this._defaultEntityManager = new EntityManager(
+      this as unknown as DataSource,
+    );
   }
 
   get isInitialized(): boolean {
@@ -80,7 +84,7 @@ export class _MultitenantDataSource<T extends DataSourceOptions['type']> {
   }
 
   get manager(): EntityManager {
-    return this.tryGetDataSource()?.manager ?? createNoopEntityManager();
+    return this.tryGetDataSource()?.manager ?? this._defaultEntityManager;
   }
 
   get namingStrategy(): NamingStrategyInterface {

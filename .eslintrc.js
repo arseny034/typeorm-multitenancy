@@ -75,6 +75,7 @@ module.exports = {
     'unicorn/prefer-top-level-await': OFF,
     'unicorn/no-array-reduce': OFF,
     'unicorn/no-null': OFF,
+    'unicorn/consistent-function-scoping': OFF,
   },
   overrides: [
     {
