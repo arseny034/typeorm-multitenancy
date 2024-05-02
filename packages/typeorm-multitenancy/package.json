@@ -1,6 +1,6 @@
 {
   "name": "typeorm-multitenancy",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": false,
   "description": "TypeORM extension for multitenant database connections",
   "author": "Arseny Buravlev <arseny.buravlyov@gmail.com>",
