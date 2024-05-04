@@ -72,7 +72,7 @@ describe('MultitenantDataSource & TypeOrmModule', () => {
               synchronize: true,
               dropSchema: true,
               getTenantId: () => currentTenantId,
-              getTenantDataSourceConfig: (tenantId, sharedOptions) => ({
+              dataSourceConfigFactory: (tenantId, sharedOptions) => ({
                 ...sharedOptions,
                 database: `.sqlite/${tenantId}.db`,
               }),

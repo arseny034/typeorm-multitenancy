@@ -42,8 +42,8 @@ export class _MultitenantDataSource<T extends DataSourceOptions['type']> {
     MultitenantRepository<any>
   >();
   protected readonly getTenantId: MultitenantDataSourceOptions<T>['getTenantId'];
-  protected readonly getTenantDataSourceConfig:
-    | MultitenantDataSourceOptions<T>['getTenantDataSourceConfig']
+  protected readonly dataSourceConfigFactory:
+    | MultitenantDataSourceOptions<T>['dataSourceConfigFactory']
     | undefined;
   protected readonly dataSourceFactory:
     | MultitenantDataSourceOptions<T>['dataSourceFactory']
@@ -60,13 +60,13 @@ export class _MultitenantDataSource<T extends DataSourceOptions['type']> {
   constructor(options: MultitenantDataSourceOptions<T>) {
     const {
       getTenantId,
-      getTenantDataSourceConfig,
+      dataSourceConfigFactory,
       dataSourceFactory,
       ...sharedOptions
     } = options;
 
     this.getTenantId = getTenantId;
-    this.getTenantDataSourceConfig = getTenantDataSourceConfig;
+    this.dataSourceConfigFactory = dataSourceConfigFactory;
     this.dataSourceFactory = dataSourceFactory;
     this.options = sharedOptions;
 
@@ -398,8 +398,8 @@ export class _MultitenantDataSource<T extends DataSourceOptions['type']> {
 
     await Promise.all(
       tenantIds.map(async (tenantId) => {
-        const options = this.getTenantDataSourceConfig
-          ? this.getTenantDataSourceConfig(tenantId, this.options)
+        const options = this.dataSourceConfigFactory
+          ? this.dataSourceConfigFactory(tenantId, this.options)
           : this.options;
 
         const dataSource = this.dataSourceFactory

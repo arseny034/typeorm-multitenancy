@@ -51,7 +51,7 @@ describe('MultitenantDataSource', () => {
       entities: [User, Company],
       synchronize: true,
       getTenantId: () => currentTenantId,
-      getTenantDataSourceConfig: (tenantId, sharedOptions) => ({
+      dataSourceConfigFactory: (tenantId, sharedOptions) => ({
         ...sharedOptions,
         database: `.sqlite/${tenantId}.db`,
       }),
