@@ -43,13 +43,17 @@ export class MultitenancyMiddleware implements NestMiddleware {
     return MultitenancyMiddleware.tenantIdStorage.getStore();
   }
 
+  static withTenant<T>(tenantId: string, callback: () => T): T {
+    return MultitenancyMiddleware.tenantIdStorage.run(tenantId, callback);
+  }
+
   protected getter: TenantIdGetter;
 
   use(request: unknown, _: unknown, next: (error?: unknown) => void) {
     const tenantId = this.getter(request);
 
     if (tenantId) {
-      MultitenancyMiddleware.tenantIdStorage.run(tenantId, next);
+      MultitenancyMiddleware.withTenant(tenantId, next);
       return;
     }
 
