@@ -1,6 +1,6 @@
 {
   "name": "typeorm-multitenancy-nestjs",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "private": false,
   "description": "Integration of typeorm-multitenancy for NestJS",
   "author": "Arseny Buravlev <arseny.buravlyov@gmail.com>",
