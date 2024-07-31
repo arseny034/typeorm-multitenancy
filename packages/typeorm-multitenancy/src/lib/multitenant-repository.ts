@@ -43,7 +43,7 @@ export class MultitenantRepository<Entity extends ObjectLiteral>
     alias?: string,
     queryRunner?: QueryRunner,
   ): SelectQueryBuilder<Entity> {
-    return this._dataSource.manager.createQueryBuilder<Entity>(
+    return this.manager.createQueryBuilder<Entity>(
       this.metadata.target,
       alias ?? this.metadata.targetName,
       queryRunner ?? this.queryRunner,
@@ -402,8 +402,22 @@ export class MultitenantRepository<Entity extends ObjectLiteral>
   }
 
   extend<CustomRepository>(
-    _: CustomRepository & ThisType<this & CustomRepository>,
+    customs: CustomRepository & ThisType<this & CustomRepository>,
   ): this & CustomRepository {
-    throw new Error('not implemented');
+    const thisRepo: any = this.constructor;
+    const { target, _dataSource, queryRunner } = this;
+    const ChildClass = class extends thisRepo {
+      constructor(
+        target: EntityTarget<Entity>,
+        dataSource: DataSource,
+        queryRunner?: QueryRunner,
+      ) {
+        super(target, dataSource, queryRunner);
+      }
+    };
+    for (const custom in customs) {
+      ChildClass.prototype[custom] = customs[custom];
+    }
+    return new ChildClass(target, _dataSource, queryRunner) as any;
   }
 }
